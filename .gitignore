@@ -1,0 +1,5 @@
+config.lua
+.env
+*.log
+*.tmp
+.claude/
