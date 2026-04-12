@@ -1,6 +1,6 @@
 # Hammerspoon Configuration
 
-A personal Hammerspoon configuration for macOS automation, featuring ChatGPT-powered translation, Reminders integration, and external display control.
+A personal Hammerspoon configuration for macOS automation, featuring ChatGPT-powered translation, text-to-speech, Reminders integration, and external display control.
 
 ## Features
 
@@ -12,6 +12,14 @@ A personal Hammerspoon configuration for macOS automation, featuring ChatGPT-pow
 - Auto-replaces selected text with translation result
 - Optimizes grammar and expression using ChatGPT (gpt-4o-mini model)
 - Shows confirmation when text is replaced
+
+### Text-to-Speech
+
+#### Hyper+S - Speak Selected Text
+- Copies and speaks selected text using macOS text-to-speech
+- If no text is selected, uses clipboard content
+- Press again to stop speaking (toggle functionality)
+- Shows visual feedback when speaking or stopping
 
 ### Reminders Integration
 
@@ -52,6 +60,7 @@ The "Hyper" key is defined as: **Cmd + Alt + Ctrl + Shift**
 | Shortcut | Action |
 |----------|--------|
 | Hyper+T | Translate selected text or clipboard |
+| Hyper+S | Speak selected text (toggle) |
 | Hyper+I | Create reminder from selection |
 | Hyper+M | Create reminder with dialog |
 | Hyper+N | Create reminder via AppleScript |

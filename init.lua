@@ -129,6 +129,51 @@ local hyper = {"cmd", "alt", "ctrl", "shift"}
 -- 快捷键：Hyper + T 翻译选中文本或剪贴板内容
 hs.hotkey.bind(hyper, "T", translateSelectedText)
 
+-- Create a speech synthesizer (reuse the same one)
+local speechSynth = hs.speech.new()
+
+-- Function to speak selected text
+local function speakSelectedText()
+  -- First, try to copy the current selection
+  hs.eventtap.keyStroke({"cmd"}, "c")
+
+  -- Small delay to ensure clipboard is updated
+  hs.timer.usleep(100000) -- 100ms delay
+
+  -- Get the clipboard content
+  local textToSpeak = hs.pasteboard.getContents()
+
+  if not textToSpeak or textToSpeak == "" then
+    hs.alert.show("No text selected or in clipboard", {
+      textSize = 14,
+      fadeInDuration = 0.1,
+      fadeOutDuration = 1
+    })
+    return
+  end
+
+  -- Check if already speaking and stop if so
+  if speechSynth:isSpeaking() then
+    speechSynth:stop()
+    hs.alert.show("⏹ Stopped speaking", {
+      textSize = 14,
+      fadeInDuration = 0.1,
+      fadeOutDuration = 0.5
+    })
+  else
+    -- Start speaking the text
+    speechSynth:speak(textToSpeak)
+    hs.alert.show("🔊 Speaking...", {
+      textSize = 14,
+      fadeInDuration = 0.1,
+      fadeOutDuration = 0.5
+    })
+  end
+end
+
+-- 快捷键：Hyper + S 朗读选中文本
+hs.hotkey.bind(hyper, "S", speakSelectedText)
+
 hs.hotkey.bind(hyper, "R", function()
   hs.reload()
 end)
