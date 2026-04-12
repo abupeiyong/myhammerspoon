@@ -5,274 +5,36 @@ local config = require("config")
 local OPENAI_API_KEY = config.OPENAI_API_KEY
 local OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 
--- Function to create a minimal input dialog using webview
-local function createInputDialog(callback)
-  local webview = hs.webview.new({x=0, y=0, w=500, h=300})
-
-  -- Store webview reference for cleanup
-  local webviewRef = webview
-
-  -- Center the window on screen
-  local screen = hs.screen.mainScreen()
-  local screenFrame = screen:frame()
-  local windowFrame = webview:frame()
-  windowFrame.x = screenFrame.x + (screenFrame.w - windowFrame.w) / 2
-  windowFrame.y = screenFrame.y + (screenFrame.h - windowFrame.h) / 2
-  webview:frame(windowFrame)
-
-  local html = [[
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style>
-        * {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-        }
-        body {
-          font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-          background: transparent;
-          height: 100vh;
-          display: flex;
-          padding: 10px;
-        }
-        #inputArea {
-          width: 100%;
-          height: 100%;
-          padding: 20px;
-          font-size: 18px;
-          border: none;
-          resize: none;
-          outline: none;
-          line-height: 1.6;
-          background: white;
-          border-radius: 12px;
-          transition: all 0.3s ease;
-          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-        }
-        #inputArea:focus {
-          outline: none;
-          box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
-        }
-        #inputArea.translating {
-          background: #f8f8f8;
-          color: #666;
-        }
-        #inputArea.translated {
-          background: #f0f9ff;
-          color: #0066cc;
-        }
-        ::placeholder {
-          color: #999;
-          font-size: 16px;
-        }
-        .loading {
-          animation: pulse 1.5s infinite;
-        }
-        @keyframes pulse {
-          0% { opacity: 1; }
-          50% { opacity: 0.5; }
-          100% { opacity: 1; }
-        }
-      </style>
-    </head>
-    <body>
-      <textarea id="inputArea" placeholder="Type or paste text here..." autofocus></textarea>
-      <script>
-        const textarea = document.getElementById('inputArea');
-        let isTranslating = false;
-
-        // Auto focus
-        textarea.focus();
-
-        // Handle keyboard shortcuts
-        textarea.addEventListener('keydown', function(e) {
-          // Enter to translate (only if not already translating)
-          if (e.key === 'Enter' && !e.shiftKey && !isTranslating) {
-            e.preventDefault();
-            const text = textarea.value.trim();
-            if (text) {
-              isTranslating = true;
-              // Disable input and show translating state
-              textarea.disabled = true;
-              textarea.classList.add('translating', 'loading');
-              textarea.placeholder = 'Translating...';
-
-              // Use window title to pass data
-              document.title = 'TRANSLATE:' + text;
-            }
-          }
-          // Escape to close
-          if (e.key === 'Escape') {
-            e.preventDefault();
-            document.title = 'CANCEL';
-          }
-        });
-
-        // Function to show translation result
-        window.showTranslation = function(translatedText) {
-          textarea.value = translatedText;
-          textarea.classList.remove('translating', 'loading');
-          textarea.classList.add('translated');
-          textarea.disabled = false;
-          textarea.readOnly = true;
-
-          // Select all text for easy copying
-          textarea.select();
-
-          // Update placeholder
-          textarea.placeholder = 'Press Escape to close';
-        };
-
-        // Function to show error
-        window.showError = function(errorMsg) {
-          textarea.value = 'Error: ' + errorMsg;
-          textarea.classList.remove('translating', 'loading');
-          textarea.disabled = false;
-          isTranslating = false;
-        };
-
-        // Clear placeholder when typing
-        textarea.addEventListener('input', function() {
-          if (this.value && !isTranslating) {
-            this.placeholder = '';
-          } else if (!this.value && !isTranslating) {
-            this.placeholder = 'Type or paste text here...';
-          }
-        });
-      </script>
-    </body>
-    </html>
-  ]]
-
-  webview:html(html)
-  webview:allowTextEntry(true)
-  webview:windowStyle({"borderless", "nonactivating"})  -- 无标题栏，最简洁
-  webview:level(hs.drawing.windowLevels.modalPanel)
-
-  -- Enable transparency for rounded corners
-  webview:transparent(true)
-
-  -- Remove window shadow since we have our own CSS shadow
-  webview:shadow(false)
-
-  -- Store original text for translation
-  local originalText = nil
-
-  -- Watch for title changes as communication mechanism
-  local titleWatcher
-  titleWatcher = hs.timer.new(0.1, function()
-    local title = webview:title()
-    if title and title:match("^TRANSLATE:") then
-      originalText = title:match("^TRANSLATE:(.+)")
-      if originalText then
-        -- Don't close the webview, just stop watching for translate command
-        webview:evaluateJavaScript("document.title = ''")
-
-        -- Call the callback to perform translation
-        callback(originalText, webview)
-      end
-    elseif title == "CANCEL" then
-      titleWatcher:stop()
-      webviewRef:delete()
-    end
-  end)
-  titleWatcher:start()
-
-  webview:show()
-
-  -- Return webview reference for updating with results
-  return webview
-end
-
--- Function to translate and optimize text using ChatGPT
-local function translateToEnglish()
-  createInputDialog(function(inputText, webview)
-    if not inputText or inputText == "" then
-      return
-    end
-
-    -- Prepare the request body
-    local requestBody = hs.json.encode({
-      model = "gpt-5-nano",
-      messages = {
-        {
-          role = "system",
-          content = "You are a professional translator and language expert. Translate the following text to English, and optimize its grammar and expression to make it more natural and professional. Only return the translated and optimized English text without any explanation."
-        },
-        {
-          role = "user",
-          content = inputText
-        }
-      }
-    })
-
-    -- Make the API request
-    hs.http.asyncPost(
-      OPENAI_API_URL,
-      requestBody,
-      {
-        ["Content-Type"] = "application/json",
-        ["Authorization"] = "Bearer " .. OPENAI_API_KEY
-      },
-      function(status, body, headers)
-        if status == 200 then
-          local response = hs.json.decode(body)
-          if response and response.choices and response.choices[1] and response.choices[1].message then
-            local translatedText = response.choices[1].message.content
-
-            -- Copy to clipboard
-            hs.pasteboard.setContents(translatedText)
-
-            -- Update the webview with translation result
-            webview:evaluateJavaScript(string.format("showTranslation('%s')",
-              translatedText:gsub("'", "\\'"):gsub("\n", "\\n"):gsub("\r", "\\r")))
-
-            -- Small notification that it's copied
-            hs.alert.show("✓ Copied to clipboard", {
-              textSize = 12,
-              fadeInDuration = 0.1,
-              fadeOutDuration = 0.5
-            })
-          else
-            webview:evaluateJavaScript("showError('Invalid response from ChatGPT')")
-          end
-        else
-          local errorMsg = "API request failed"
-          if body then
-            local errorData = hs.json.decode(body)
-            if errorData and errorData.error and errorData.error.message then
-              errorMsg = errorData.error.message
-            end
-          end
-          webview:evaluateJavaScript(string.format("showError('%s')",
-            errorMsg:gsub("'", "\\'"):gsub("\n", "\\n")))
-          print("API Error - Status:", status, "Body:", body)
-        end
-      end
-    )
-  end)
-end
 
 -- Function to translate selected text using ChatGPT
 local function translateSelectedText()
-  -- Get the currently selected text
-  local elem = hs.uielement.focusedElement()
-  local selectedText = nil
+  -- First, try to copy the current selection
   local hasSelection = false
+  local selectedText = nil
 
+  -- Simulate Cmd+C to copy current selection
+  hs.eventtap.keyStroke({"cmd"}, "c")
+
+  -- Small delay to ensure clipboard is updated
+  hs.timer.usleep(100000) -- 100ms delay
+
+  -- Get the clipboard content
+  local currentClipboard = hs.pasteboard.getContents()
+
+  -- Check if we actually copied something new (by checking if clipboard changed)
+  -- We'll consider it a selection if we successfully got text from clipboard after Cmd+C
+  local elem = hs.uielement.focusedElement()
   if elem then
-    selectedText = elem:selectedText()
-    if selectedText and selectedText ~= "" then
+    local elemSelectedText = elem:selectedText()
+    if elemSelectedText and elemSelectedText ~= "" then
       hasSelection = true
+      selectedText = currentClipboard
     end
   end
 
-  -- If no text is selected, try to get from clipboard
-  if not selectedText or selectedText == "" then
-    selectedText = hs.pasteboard.getContents()
-    hasSelection = false
+  -- If no selection detected, just use current clipboard content
+  if not hasSelection then
+    selectedText = currentClipboard
   end
 
   if not selectedText or selectedText == "" then
@@ -328,10 +90,10 @@ local function translateSelectedText()
             end)
           else
             -- If no selection, just show the result
-            hs.alert.show("✓ Translation copied to clipboard", {
+            hs.alert.show(translatedText, {
               textSize = 14,
               fadeInDuration = 0.25,
-              fadeOutDuration = 1
+              fadeOutDuration = 2
             })
           end
         else
@@ -363,11 +125,9 @@ local function translateSelectedText()
 end
 
 local hyper = {"cmd", "alt", "ctrl", "shift"}
--- 快捷键：Cmd + Option + T 翻译文本到英文（输入对话框）
-hs.hotkey.bind(hyper, "T", translateToEnglish)
 
--- 快捷键：Cmd + Option + S 翻译选中文本或剪贴板内容
-hs.hotkey.bind(hyper, "S", translateSelectedText)
+-- 快捷键：Hyper + T 翻译选中文本或剪贴板内容
+hs.hotkey.bind(hyper, "T", translateSelectedText)
 
 hs.hotkey.bind(hyper, "R", function()
   hs.reload()
