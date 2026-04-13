@@ -13,13 +13,14 @@ A personal Hammerspoon configuration for macOS automation, featuring ChatGPT-pow
 - Optimizes grammar and expression using ChatGPT (gpt-4o-mini model)
 - Shows confirmation when text is replaced
 
-### Text-to-Speech
+### Text-to-Speech (ElevenLabs Integration)
 
 #### Hyper+S - Speak Selected Text
-- Copies and speaks selected text using macOS text-to-speech
+- Copies and speaks selected text using ElevenLabs AI voices
+- High-quality, natural-sounding speech synthesis
 - If no text is selected, uses clipboard content
 - Press again to stop speaking (toggle functionality)
-- Shows visual feedback when speaking or stopping
+- Shows visual feedback when generating and playing speech
 
 ### Reminders Integration
 
@@ -76,14 +77,19 @@ The "Hyper" key is defined as: **Cmd + Alt + Ctrl + Shift**
 
 2. **OpenAI API Key** - Required for translation features
    - Get your API key from [OpenAI Platform](https://platform.openai.com/)
+
+3. **ElevenLabs API Key** - Required for text-to-speech features
+   - Get your API key from [ElevenLabs](https://elevenlabs.io/)
    - Create `config.lua` in `~/.hammerspoon/`:
    ```lua
    return {
-     openai_api_key = "your-api-key-here"
+     OPENAI_API_KEY = "your-openai-key-here",
+     ELEVENLABS_API_KEY = "your-elevenlabs-key-here",
+     ELEVENLABS_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"  -- Optional, defaults to Rachel
    }
    ```
 
-3. **m1ddc** - Required for display brightness control on Apple Silicon
+4. **m1ddc** - Required for display brightness control on Apple Silicon
    ```bash
    brew install m1ddc
    ```
@@ -106,7 +112,9 @@ Main configuration file containing all hotkey bindings and functions.
 Stores sensitive configuration like API keys:
 ```lua
 return {
-  openai_api_key = "sk-proj-..."  -- Your OpenAI API key
+  OPENAI_API_KEY = "sk-proj-...",  -- Your OpenAI API key
+  ELEVENLABS_API_KEY = "your-key-here",  -- Your ElevenLabs API key
+  ELEVENLABS_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"  -- Voice ID (optional)
 }
 ```
 
@@ -117,6 +125,14 @@ return {
 - Sends selected/clipboard text with system prompt for translation
 - Optimizes for natural, professional English expression
 - Handles API errors gracefully with user notifications
+
+### Text-to-Speech Implementation
+- Uses ElevenLabs API for high-quality AI voice synthesis
+- Model: eleven_monolingual_v1 for optimized English speech
+- Voice: Configurable, defaults to Rachel (21m00Tcm4TlvDq8ikWAM)
+- Downloads audio as MP3 and plays using hs.sound
+- Automatically cleans up temporary audio files
+- Toggle functionality to stop playback mid-speech
 
 ### Display Control Implementation
 - Primary method: `m1ddc` command-line tool for DDC/CI control

@@ -5,6 +5,11 @@ local config = require("config")
 local OPENAI_API_KEY = config.OPENAI_API_KEY
 local OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 
+-- ElevenLabs API configuration
+local ELEVENLABS_API_KEY = config.ELEVENLABS_API_KEY or "your-api-key-here"
+local ELEVENLABS_VOICE_ID = config.ELEVENLABS_VOICE_ID or "21m00Tcm4TlvDq8ikWAM"
+local ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1/text-to-speech/" .. ELEVENLABS_VOICE_ID
+
 
 -- Function to translate selected text using ChatGPT
 local function translateSelectedText()
@@ -129,10 +134,10 @@ local hyper = {"cmd", "alt", "ctrl", "shift"}
 -- 快捷键：Hyper + T 翻译选中文本或剪贴板内容
 hs.hotkey.bind(hyper, "T", translateSelectedText)
 
--- Create a speech synthesizer (reuse the same one)
-local speechSynth = hs.speech.new()
+-- Store current audio player for stopping
+local currentAudioPlayer = nil
 
--- Function to speak selected text
+-- Function to speak selected text using ElevenLabs
 local function speakSelectedText()
   -- First, try to copy the current selection
   hs.eventtap.keyStroke({"cmd"}, "c")
@@ -152,23 +157,94 @@ local function speakSelectedText()
     return
   end
 
-  -- Check if already speaking and stop if so
-  if speechSynth:isSpeaking() then
-    speechSynth:stop()
+  -- Check if already playing and stop if so
+  if currentAudioPlayer and currentAudioPlayer:isPlaying() then
+    currentAudioPlayer:stop()
+    currentAudioPlayer = nil
     hs.alert.show("⏹ Stopped speaking", {
       textSize = 14,
       fadeInDuration = 0.1,
       fadeOutDuration = 0.5
     })
-  else
-    -- Start speaking the text
-    speechSynth:speak(textToSpeak)
-    hs.alert.show("🔊 Speaking...", {
-      textSize = 14,
-      fadeInDuration = 0.1,
-      fadeOutDuration = 0.5
-    })
+    return
   end
+
+  -- Show initial alert
+  hs.alert.show("🔊 Generating speech...", {
+    textSize = 14,
+    fadeInDuration = 0.1,
+    fadeOutDuration = 0
+  })
+
+  -- Prepare the request body for ElevenLabs
+  local requestBody = hs.json.encode({
+    text = textToSpeak,
+    model_id = "eleven_monolingual_v1",
+    voice_settings = {
+      stability = 0.5,
+      similarity_boost = 0.5
+    }
+  })
+
+  -- Make the API request to ElevenLabs
+  hs.http.asyncPost(
+    ELEVENLABS_API_URL,
+    requestBody,
+    {
+      ["Content-Type"] = "application/json",
+      ["xi-api-key"] = ELEVENLABS_API_KEY,
+      ["Accept"] = "audio/mpeg"
+    },
+    function(status, body, headers)
+      if status == 200 then
+        -- Save the audio to a temporary file
+        local tempFile = os.tmpname() .. ".mp3"
+        local file = io.open(tempFile, "wb")
+        if file then
+          file:write(body)
+          file:close()
+
+          -- Play the audio file
+          currentAudioPlayer = hs.sound.getByFile(tempFile)
+          if currentAudioPlayer then
+            currentAudioPlayer:play()
+            hs.alert.show("🔊 Speaking...", {
+              textSize = 14,
+              fadeInDuration = 0.1,
+              fadeOutDuration = 0.5
+            })
+
+            -- Clean up temp file after playback finishes
+            currentAudioPlayer:setCallback(function(completedNormally)
+              os.remove(tempFile)
+              currentAudioPlayer = nil
+            end)
+          else
+            hs.alert.show("Failed to play audio", {
+              textSize = 14,
+              fadeInDuration = 0.1,
+              fadeOutDuration = 2
+            })
+            os.remove(tempFile)
+          end
+        end
+      else
+        local errorMsg = "TTS API request failed"
+        if body then
+          local errorData = hs.json.decode(body)
+          if errorData and errorData.detail then
+            errorMsg = errorData.detail.message or errorData.detail.status or errorMsg
+          end
+        end
+        hs.alert.show(errorMsg, {
+          textSize = 14,
+          fadeInDuration = 0.1,
+          fadeOutDuration = 2
+        })
+        print("ElevenLabs API Error - Status:", status, "Body:", body)
+      end
+    end
+  )
 end
 
 -- 快捷键：Hyper + S 朗读选中文本
