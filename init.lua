@@ -7,7 +7,7 @@ local OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 
 -- ElevenLabs API configuration
 local ELEVENLABS_API_KEY = config.ELEVENLABS_API_KEY or "your-api-key-here"
-local ELEVENLABS_VOICE_ID = config.ELEVENLABS_VOICE_ID or "21m00Tcm4TlvDq8ikWAM"
+local ELEVENLABS_VOICE_ID = config.ELEVENLABS_VOICE_ID or "JBFqnCBsd6RMkjVDRZzb"
 local ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1/text-to-speech/" .. ELEVENLABS_VOICE_ID
 
 
@@ -179,7 +179,7 @@ local function speakSelectedText()
   -- Prepare the request body for ElevenLabs
   local requestBody = hs.json.encode({
     text = textToSpeak,
-    model_id = "eleven_monolingual_v1",
+    model_id = "eleven_v3",
     voice_settings = {
       stability = 0.5,
       similarity_boost = 0.5
