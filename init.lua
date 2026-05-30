@@ -137,6 +137,94 @@ hs.hotkey.bind(hyper, "T", translateSelectedText)
 -- Store current audio player for stopping
 local currentAudioPlayer = nil
 
+-- ElevenLabs TTS synthesis params (shared by all speak functions; part of cache key)
+local TTS_MODEL_ID = "eleven_v3"
+local TTS_VOICE_SETTINGS = { stability = 0.5, similarity_boost = 0.5 }
+
+-- On-disk cache for generated audio, keyed by voice + model + text. Identical
+-- requests replay the cached mp3 instead of hitting the API again.
+local TTS_CACHE_DIR = os.getenv("HOME") .. "/.hammerspoon/tts_cache"
+hs.fs.mkdir(TTS_CACHE_DIR)  -- no-op if it already exists
+
+local function ttsCachePath(text)
+  local key = ELEVENLABS_VOICE_ID .. "|" .. TTS_MODEL_ID .. "|" .. text
+  return TTS_CACHE_DIR .. "/" .. hs.hash.MD5(key) .. ".mp3"
+end
+
+-- Play a local mp3, tracking it as the current player. Returns true if started.
+local function playCachedAudio(path, onStart, onFail)
+  currentAudioPlayer = hs.sound.getByFile(path)
+  if currentAudioPlayer then
+    currentAudioPlayer:play()
+    if onStart then onStart() end
+    currentAudioPlayer:setCallback(function() currentAudioPlayer = nil end)
+    return true
+  end
+  if onFail then onFail() end
+  return false
+end
+
+-- Speak text via ElevenLabs, using the on-disk cache. Stops any current
+-- playback first. callbacks: onSpeaking() once playback starts, onError(msg).
+local function speakWithCache(text, callbacks)
+  callbacks = callbacks or {}
+  if not text or text == "" then return end
+
+  if currentAudioPlayer and currentAudioPlayer:isPlaying() then
+    currentAudioPlayer:stop()
+    currentAudioPlayer = nil
+  end
+
+  local path = ttsCachePath(text)
+
+  -- Cache hit: replay without touching the API
+  if hs.fs.attributes(path) then
+    if playCachedAudio(path, callbacks.onSpeaking) then return end
+    os.remove(path)  -- unreadable/corrupt; drop it and re-fetch below
+  end
+
+  if callbacks.onGenerating then callbacks.onGenerating() end
+
+  local requestBody = hs.json.encode({
+    text = text,
+    model_id = TTS_MODEL_ID,
+    voice_settings = TTS_VOICE_SETTINGS
+  })
+
+  hs.http.asyncPost(
+    ELEVENLABS_API_URL,
+    requestBody,
+    {
+      ["Content-Type"] = "application/json",
+      ["xi-api-key"] = ELEVENLABS_API_KEY,
+      ["Accept"] = "audio/mpeg"
+    },
+    function(status, body, headers)
+      if status == 200 then
+        local file = io.open(path, "wb")
+        if file then
+          file:write(body)
+          file:close()
+          playCachedAudio(path, callbacks.onSpeaking, function()
+            os.remove(path)
+            if callbacks.onError then callbacks.onError("Failed to play audio") end
+          end)
+        end
+      else
+        local errorMsg = "TTS API request failed"
+        if body then
+          local errorData = hs.json.decode(body)
+          if errorData and errorData.detail then
+            errorMsg = errorData.detail.message or errorData.detail.status or errorMsg
+          end
+        end
+        if callbacks.onError then callbacks.onError(errorMsg) end
+        print("ElevenLabs API Error - Status:", status, "Body:", body)
+      end
+    end
+  )
+end
+
 -- Function to speak selected text using ElevenLabs
 local function speakSelectedText()
   -- First, try to copy the current selection
@@ -169,82 +257,29 @@ local function speakSelectedText()
     return
   end
 
-  -- Show initial alert
-  hs.alert.show("🔊 Generating speech...", {
-    textSize = 14,
-    fadeInDuration = 0.1,
-    fadeOutDuration = 0
-  })
-
-  -- Prepare the request body for ElevenLabs
-  local requestBody = hs.json.encode({
-    text = textToSpeak,
-    model_id = "eleven_v3",
-    voice_settings = {
-      stability = 0.5,
-      similarity_boost = 0.5
-    }
-  })
-
-  -- Make the API request to ElevenLabs
-  hs.http.asyncPost(
-    ELEVENLABS_API_URL,
-    requestBody,
-    {
-      ["Content-Type"] = "application/json",
-      ["xi-api-key"] = ELEVENLABS_API_KEY,
-      ["Accept"] = "audio/mpeg"
-    },
-    function(status, body, headers)
-      if status == 200 then
-        -- Save the audio to a temporary file
-        local tempFile = os.tmpname() .. ".mp3"
-        local file = io.open(tempFile, "wb")
-        if file then
-          file:write(body)
-          file:close()
-
-          -- Play the audio file
-          currentAudioPlayer = hs.sound.getByFile(tempFile)
-          if currentAudioPlayer then
-            currentAudioPlayer:play()
-            hs.alert.show("🔊 Speaking...", {
-              textSize = 14,
-              fadeInDuration = 0.1,
-              fadeOutDuration = 0.5
-            })
-
-            -- Clean up temp file after playback finishes
-            currentAudioPlayer:setCallback(function(completedNormally)
-              os.remove(tempFile)
-              currentAudioPlayer = nil
-            end)
-          else
-            hs.alert.show("Failed to play audio", {
-              textSize = 14,
-              fadeInDuration = 0.1,
-              fadeOutDuration = 2
-            })
-            os.remove(tempFile)
-          end
-        end
-      else
-        local errorMsg = "TTS API request failed"
-        if body then
-          local errorData = hs.json.decode(body)
-          if errorData and errorData.detail then
-            errorMsg = errorData.detail.message or errorData.detail.status or errorMsg
-          end
-        end
-        hs.alert.show(errorMsg, {
-          textSize = 14,
-          fadeInDuration = 0.1,
-          fadeOutDuration = 2
-        })
-        print("ElevenLabs API Error - Status:", status, "Body:", body)
-      end
+  speakWithCache(textToSpeak, {
+    onGenerating = function()
+      hs.alert.show("🔊 Generating speech...", {
+        textSize = 14,
+        fadeInDuration = 0.1,
+        fadeOutDuration = 0
+      })
+    end,
+    onSpeaking = function()
+      hs.alert.show("🔊 Speaking...", {
+        textSize = 14,
+        fadeInDuration = 0.1,
+        fadeOutDuration = 0.5
+      })
+    end,
+    onError = function(msg)
+      hs.alert.show(msg, {
+        textSize = 14,
+        fadeInDuration = 0.1,
+        fadeOutDuration = 2
+      })
     end
-  )
+  })
 end
 
 -- 快捷键：Hyper + S 朗读选中文本
@@ -252,53 +287,7 @@ hs.hotkey.bind(hyper, "S", speakSelectedText)
 
 -- Play given text via ElevenLabs (fire-and-forget; stops any current playback)
 local function speakText(text)
-  if not text or text == "" then return end
-
-  if currentAudioPlayer and currentAudioPlayer:isPlaying() then
-    currentAudioPlayer:stop()
-    currentAudioPlayer = nil
-  end
-
-  local requestBody = hs.json.encode({
-    text = text,
-    model_id = "eleven_v3",
-    voice_settings = {
-      stability = 0.5,
-      similarity_boost = 0.5
-    }
-  })
-
-  hs.http.asyncPost(
-    ELEVENLABS_API_URL,
-    requestBody,
-    {
-      ["Content-Type"] = "application/json",
-      ["xi-api-key"] = ELEVENLABS_API_KEY,
-      ["Accept"] = "audio/mpeg"
-    },
-    function(status, body, headers)
-      if status == 200 then
-        local tempFile = os.tmpname() .. ".mp3"
-        local file = io.open(tempFile, "wb")
-        if file then
-          file:write(body)
-          file:close()
-          currentAudioPlayer = hs.sound.getByFile(tempFile)
-          if currentAudioPlayer then
-            currentAudioPlayer:play()
-            currentAudioPlayer:setCallback(function(completedNormally)
-              os.remove(tempFile)
-              currentAudioPlayer = nil
-            end)
-          else
-            os.remove(tempFile)
-          end
-        end
-      else
-        print("ElevenLabs API Error - Status:", status, "Body:", body)
-      end
-    end
-  )
+  speakWithCache(text)
 end
 
 -- Append a dictionary entry to today's Obsidian daily note (creates file if missing)

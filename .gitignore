@@ -3,3 +3,4 @@ config.lua
 *.log
 *.tmp
 .claude/
+tts_cache/
