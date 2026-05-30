@@ -23,6 +23,7 @@ After editing any Lua files, reload the config in Hammerspoon with Hyper+R (Cmd+
 |-----|----------|
 | Hyper+T | Translate selected text via OpenAI API |
 | Hyper+S | Text-to-speech toggle for selected text |
+| Hyper+W | Dictionary lookup: show Chinese meaning, speak word, log to Obsidian daily note |
 | Hyper+I | Quick reminder from selection |
 | Hyper+M | Reminder with edit dialog |
 | Hyper+N | Reminder via AppleScript |

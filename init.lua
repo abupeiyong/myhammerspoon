@@ -250,6 +250,181 @@ end
 -- 快捷键：Hyper + S 朗读选中文本
 hs.hotkey.bind(hyper, "S", speakSelectedText)
 
+-- Play given text via ElevenLabs (fire-and-forget; stops any current playback)
+local function speakText(text)
+  if not text or text == "" then return end
+
+  if currentAudioPlayer and currentAudioPlayer:isPlaying() then
+    currentAudioPlayer:stop()
+    currentAudioPlayer = nil
+  end
+
+  local requestBody = hs.json.encode({
+    text = text,
+    model_id = "eleven_v3",
+    voice_settings = {
+      stability = 0.5,
+      similarity_boost = 0.5
+    }
+  })
+
+  hs.http.asyncPost(
+    ELEVENLABS_API_URL,
+    requestBody,
+    {
+      ["Content-Type"] = "application/json",
+      ["xi-api-key"] = ELEVENLABS_API_KEY,
+      ["Accept"] = "audio/mpeg"
+    },
+    function(status, body, headers)
+      if status == 200 then
+        local tempFile = os.tmpname() .. ".mp3"
+        local file = io.open(tempFile, "wb")
+        if file then
+          file:write(body)
+          file:close()
+          currentAudioPlayer = hs.sound.getByFile(tempFile)
+          if currentAudioPlayer then
+            currentAudioPlayer:play()
+            currentAudioPlayer:setCallback(function(completedNormally)
+              os.remove(tempFile)
+              currentAudioPlayer = nil
+            end)
+          else
+            os.remove(tempFile)
+          end
+        end
+      else
+        print("ElevenLabs API Error - Status:", status, "Body:", body)
+      end
+    end
+  )
+end
+
+-- Append a dictionary entry to today's Obsidian daily note (creates file if missing)
+local function appendToDailyNote(word, meaning)
+  local dailyDir = "/Users/yangpeiyong/Documents/Becoming/Daily"
+  local today = os.date("%Y-%m-%d")
+  local filePath = dailyDir .. "/" .. today .. ".md"
+
+  local cleanMeaning = meaning:gsub("[\r\n]+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+  local cleanWord = word:gsub("[\r\n]+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+  local line = string.format("- **%s** — %s\n", cleanWord, cleanMeaning)
+
+  local file = io.open(filePath, "a")
+  if file then
+    file:write(line)
+    file:close()
+    return true
+  end
+  return false
+end
+
+-- Run the dictionary flow on a captured word.
+local function runDictionaryLookup(word)
+  word = word:gsub("^%s+", ""):gsub("%s+$", "")
+  if word == "" then
+    hs.alert.show("No text selected", 2)
+    return
+  end
+
+  hs.alert.show("📖 " .. word, {
+    textSize = 14,
+    fadeOutDuration = 0
+  })
+
+  local requestBody = hs.json.encode({
+    model = "gpt-5-nano",
+    messages = {
+      {
+        role = "system",
+        content = "You are a concise English-to-Chinese dictionary. For the given English word or phrase, return ONLY a dictionary entry in this exact format: `<part-of-speech>. <chinese meaning 1>；<chinese meaning 2>` (1-3 Chinese meanings separated by full-width semicolons ；). Part of speech abbreviations: n./v./adj./adv./prep./conj./phrase. No extra text, no explanation, no quotes."
+      },
+      {
+        role = "user",
+        content = word
+      }
+    }
+  })
+
+  hs.http.asyncPost(
+    OPENAI_API_URL,
+    requestBody,
+    {
+      ["Content-Type"] = "application/json",
+      ["Authorization"] = "Bearer " .. OPENAI_API_KEY
+    },
+    function(status, body, headers)
+      if status == 200 then
+        local response = hs.json.decode(body)
+        if response and response.choices and response.choices[1] and response.choices[1].message then
+          local meaning = response.choices[1].message.content
+          local trimmed = meaning:gsub("^%s+", ""):gsub("%s+$", "")
+
+          hs.alert.show(word .. "\n" .. trimmed, {
+            textSize = 20,
+            fadeInDuration = 0.1,
+            fadeOutDuration = 3,
+            radius = 8
+          })
+
+          speakText(word)
+
+          if not appendToDailyNote(word, trimmed) then
+            hs.alert.show("⚠️ Could not write to daily note", 2)
+          end
+        else
+          hs.alert.show("Error: Invalid response from ChatGPT", 3)
+        end
+      else
+        local errorMsg = "Dictionary lookup failed"
+        if body then
+          local errorData = hs.json.decode(body)
+          if errorData and errorData.error and errorData.error.message then
+            errorMsg = "Error: " .. errorData.error.message
+          end
+        end
+        hs.alert.show(errorMsg, 3)
+        print("API Error - Status:", status, "Body:", body)
+      end
+    end
+  )
+end
+
+-- Capture selected text, then run the dictionary flow.
+-- Cmd+Q is macOS's quit gesture, so synthesizing Cmd+C while Hyper+Q is still
+-- physically held races with the OS's hold-to-quit handling and often fails to
+-- reach the focused app (unlike Hyper+S, where Cmd+S has no such gesture).
+-- Strategy: read the selection via the accessibility API first (no keystroke
+-- needed); if unavailable, defer Cmd+C by 120ms so the user releases Hyper+Q
+-- before the synthetic keystroke fires.
+local function dictionaryLookup()
+  local elem = hs.uielement.focusedElement()
+  if elem then
+    local ok, sel = pcall(function() return elem:selectedText() end)
+    if ok and sel and sel ~= "" then
+      runDictionaryLookup(sel)
+      return
+    end
+  end
+
+  local beforeCount = hs.pasteboard.changeCount()
+  hs.timer.doAfter(0.12, function()
+    hs.eventtap.keyStroke({"cmd"}, "c")
+    hs.timer.doAfter(0.15, function()
+      if hs.pasteboard.changeCount() == beforeCount then
+        hs.alert.show("No text selected", 2)
+        return
+      end
+      local word = hs.pasteboard.getContents() or ""
+      runDictionaryLookup(word)
+    end)
+  end)
+end
+
+-- 快捷键：Hyper + W 查词：显示中文释义、朗读、写入 Obsidian 日记
+hs.hotkey.bind(hyper, "W", dictionaryLookup)
+
 hs.hotkey.bind(hyper, "R", function()
   hs.reload()
 end)
