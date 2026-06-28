@@ -4,3 +4,4 @@ config.lua
 *.tmp
 .claude/
 tts_cache/
+tools/toggle-grayscale

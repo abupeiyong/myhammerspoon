@@ -24,6 +24,7 @@ After editing any Lua files, reload the config in Hammerspoon with Hyper+R (Cmd+
 | Hyper+T | Translate selected text via OpenAI API |
 | Hyper+S | Text-to-speech toggle for selected text |
 | Hyper+W | Dictionary lookup: show Chinese meaning, speak word, log to Obsidian daily note |
+| Hyper+C | Toggle grayscale/color display (Color Filters) |
 | Hyper+I | Quick reminder from selection |
 | Hyper+M | Reminder with edit dialog |
 | Hyper+N | Reminder via AppleScript |
@@ -35,6 +36,7 @@ After editing any Lua files, reload the config in Hammerspoon with Hyper+R (Cmd+
 
 - **OpenAI API** — Used for translation (Hyper+T). Requires `OPENAI_API_KEY` in `config.lua`.
 - **m1ddc** (`/opt/homebrew/bin/m1ddc`) — Used for external display brightness control via DDC/CI. Install with `brew install m1ddc`.
+- **toggle-grayscale** (`tools/toggle-grayscale`) — Small ObjC helper for the grayscale toggle (Hyper+C), linking the private `UniversalAccess` framework. Source is `tools/toggle-grayscale.m`; the binary is gitignored and auto-compiled by `init.lua` on load if missing (requires Xcode/CLT `clang`).
 
 ## Conventions
 

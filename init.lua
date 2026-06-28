@@ -414,6 +414,42 @@ end
 -- 快捷键：Hyper + W 查词：显示中文释义、朗读、写入 Obsidian 日记
 hs.hotkey.bind(hyper, "W", dictionaryLookup)
 
+-- Grayscale (Color Filters) toggle via a small helper that calls the private
+-- UniversalAccess framework — the only way to flip grayscale live.
+local grayscaleDir = os.getenv("HOME") .. "/.hammerspoon/tools"
+local grayscaleBin = grayscaleDir .. "/toggle-grayscale"
+
+-- Build the helper if it's missing (e.g. after a fresh checkout; binary is gitignored).
+if not hs.fs.attributes(grayscaleBin) then
+  hs.execute(string.format(
+    "clang -framework UniversalAccess -F/System/Library/PrivateFrameworks %q -o %q 2>&1",
+    grayscaleDir .. "/toggle-grayscale.m", grayscaleBin))
+end
+
+local function toggleGrayscale()
+  if not hs.fs.attributes(grayscaleBin) then
+    hs.alert.show("toggle-grayscale helper not built", 3)
+    return
+  end
+  hs.task.new(grayscaleBin, function(exitCode, stdOut, stdErr)
+    if exitCode == 0 then
+      local state = (stdOut or ""):gsub("%s+", "")
+      hs.alert.show(state == "on" and "◐ 黑白" or "◑ 彩色", {
+        textSize = 18,
+        fadeInDuration = 0.05,
+        fadeOutDuration = 0.6,
+        radius = 6
+      })
+    else
+      hs.alert.show("Failed to toggle grayscale", 2)
+      print("toggle-grayscale error:", stdErr)
+    end
+  end):start()
+end
+
+-- 快捷键：Hyper + C 切换黑白/彩色显示
+hs.hotkey.bind(hyper, "C", toggleGrayscale)
+
 hs.hotkey.bind(hyper, "R", function()
   hs.reload()
 end)
