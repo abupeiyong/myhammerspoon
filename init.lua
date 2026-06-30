@@ -327,7 +327,7 @@ local function runDictionaryLookup(word)
     messages = {
       {
         role = "system",
-        content = "You are a concise English-to-Chinese dictionary. For the given English word or phrase, return ONLY a dictionary entry in this exact format: `<part-of-speech>. <chinese meaning 1>；<chinese meaning 2>` (1-3 Chinese meanings separated by full-width semicolons ；). Part of speech abbreviations: n./v./adj./adv./prep./conj./phrase. No extra text, no explanation, no quotes."
+        content = "You are a concise English-to-Chinese dictionary. For the given English word or phrase, return ONLY a dictionary entry in this exact format: `/IPA/ <part-of-speech>. <chinese meaning 1>；<chinese meaning 2>` — start with the British IPA phonetic transcription enclosed in forward slashes (e.g. /ˈdɪkʃənri/), then 1-3 Chinese meanings separated by full-width semicolons ；. Part of speech abbreviations: n./v./adj./adv./prep./conj./phrase. For multi-word phrases, omit the IPA. No extra text, no explanation, no quotes."
       },
       {
         role = "user",
