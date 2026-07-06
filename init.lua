@@ -50,6 +50,9 @@ local function translateSelectedText()
   -- Prepare the request body
   local requestBody = hs.json.encode({
     model = "gpt-5-nano",
+    -- Disable hidden reasoning (see dictionary lookup note): translation is a
+    -- direct task, so "minimal" cuts latency ~7x with no quality loss.
+    reasoning_effort = "minimal",
     messages = {
       {
         role = "system",
@@ -324,6 +327,10 @@ local function runDictionaryLookup(word)
 
   local requestBody = hs.json.encode({
     model = "gpt-5-nano",
+    -- gpt-5-nano is a reasoning model; without this it burns ~1500 hidden
+    -- reasoning tokens (~9s) on a lookup that only needs a dozen output tokens.
+    -- "minimal" disables reasoning → ~1.3s with identical output quality.
+    reasoning_effort = "minimal",
     messages = {
       {
         role = "system",
