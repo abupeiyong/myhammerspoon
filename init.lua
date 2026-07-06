@@ -141,7 +141,7 @@ hs.hotkey.bind(hyper, "T", translateSelectedText)
 local currentAudioPlayer = nil
 
 -- ElevenLabs TTS synthesis params (shared by all speak functions; part of cache key)
-local TTS_MODEL_ID = "eleven_v3"
+local TTS_MODEL_ID = "eleven_flash_v2_5"
 local TTS_VOICE_SETTINGS = { stability = 0.5, similarity_boost = 0.5 }
 
 -- On-disk cache for generated audio, keyed by voice + model + text. Identical
